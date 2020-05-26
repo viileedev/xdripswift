@@ -43,7 +43,7 @@ class CGMBubbleTransmitter:BluetoothTransmitter, CGMTransmitter {
     /// used as parameter in call to cgmTransmitterDelegate.cgmTransmitterInfoReceived, when there's no glucosedata to send
     var emptyArray: [GlucoseData] = []
     
-    // current sensor serial number, if nil then it's not known yet
+    /// current sensor serial number, if nil then it's not known yet
     private var sensorSerialNumber:String?
     
     private var patchUid: String?
@@ -142,6 +142,7 @@ class CGMBubbleTransmitter:BluetoothTransmitter, CGMTransmitter {
             if let firstByte = value.first {
                 if let bubbleResponseState = BubbleResponseType(rawValue: firstByte) {
                     switch bubbleResponseState {
+                        
                     case .dataInfo:
                         
                         // get hardware, firmware and batteryPercentage
@@ -161,17 +162,21 @@ class CGMBubbleTransmitter:BluetoothTransmitter, CGMTransmitter {
                         _ = writeDataToPeripheral(data: Data([0x02, 0x00, 0x00, 0x00, 0x00, 0x2B]), type: .withoutResponse)
                         
                     case .serialNumber:
+                        
                         guard value.count >= 10 else { return }
                         rxBuffer.append(value.subdata(in: 2..<10))
                         patchUid = value.subdata(in: 2 ..< 10).hexEncodedString().uppercased()
+                        
                     case .dataPacket:
                         
                         rxBuffer.append(value.suffix(from: 4))
                         if rxBuffer.count >= 352 {
+                            
                             guard let patchInfo = patchInfo else {
                                 resetRxBuffer()
                                 return
                             }
+                            
                             if let libreSensorSerialNumber = LibreSensorSerialNumber(withUID: Data(rxBuffer.subdata(in: 0..<8))) {
                                 
                                 
@@ -207,12 +212,15 @@ class CGMBubbleTransmitter:BluetoothTransmitter, CGMTransmitter {
                             //reset the buffer
                             resetRxBuffer()
                         }
+                        
                     case .noSensor:
                         cgmTransmitterDelegate?.sensorNotDetected()
+                        
                     case .patchInfo:
                         if value.count >= 10 {
                             patchInfo = value.subdata(in: 5 ..< 11).hexEncodedString().uppercased()
                         }
+                        
                     }
                 }
             }
@@ -275,7 +283,7 @@ fileprivate enum BubbleResponseType: UInt8 {
     case dataInfo = 128 //0x80
     case noSensor = 191 //0xBF
     case serialNumber = 192 //0xC0
-    case patchInfo = 193
+    case patchInfo = 193 //0xC1
 }
 
 extension BubbleResponseType: CustomStringConvertible {
