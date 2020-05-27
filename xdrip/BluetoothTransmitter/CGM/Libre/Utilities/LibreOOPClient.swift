@@ -28,15 +28,15 @@ public class LibreOOPClient {
     /// get the libre glucose data by server
     /// - Parameters:
     ///   - libreData: the 344 bytes from Libre sensor
-    ///   - patchUid : sensor sn hex string
+    ///   - libreSensorSerialNumber : sensor sn
     ///   - patchInfo : will be used by server to out the glucose data
     ///   - oopWebSite: the site url to use if oop web would be enabled
     ///   - oopWebToken: the token to use if oop web would be enabled
     ///   - callback: server data that contains the 344 bytes details
-    static func webOOP(libreData: [UInt8], patchUid: String, patchInfo: String, oopWebSite: String, oopWebToken: String, callback: ((LibreRawGlucoseOOPData?) -> Void)?) {
+    static func webOOP(libreData: [UInt8], libreSensorSerialNumber: LibreSensorSerialNumber, patchInfo: String, oopWebSite: String, oopWebToken: String, callback: ((LibreRawGlucoseOOPData?) -> Void)?) {
         let bytesAsData = Data(bytes: libreData, count: libreData.count)
         let item = URLQueryItem(name: "accesstoken", value: oopWebToken)
-        let item1 = URLQueryItem(name: "patchUid", value: patchUid)
+        let item1 = URLQueryItem(name: "patchUid", value: libreSensorSerialNumber.uidString.uppercased())
         let item2 = URLQueryItem(name: "patchInfo", value: patchInfo)
         let item3 = URLQueryItem(name: "content", value: bytesAsData.hexEncodedString())
         var urlComponents = URLComponents(string: "\(oopWebSite)/libreoop2")!
@@ -93,12 +93,12 @@ public class LibreOOPClient {
     /// get the parameters and local parse
     /// - Parameters:
     ///   - libreData: the 344 bytes from Libre sensor
-    ///   - serialNumber: sensor serial number
+    ///   - libreSensorSerialNumber: sensor serial number
     ///   - timeStampLastBgReading: timestamp of last reading, older readings will be ignored
     ///   - oopWebSite: the site url to use if oop web would be enabled
     ///   - oopWebToken: the token to use if oop web would be enabled
     ///   - callback: will be called when glucose data is read with as parameter the timestamp of the last reading.
-    static func oop(libreData: [UInt8], serialNumber: String, timeStampLastBgReading: Date, oopWebSite: String, oopWebToken: String, _ callback: @escaping ((glucoseData: [GlucoseData], sensorState: LibreSensorState, sensorTimeInMinutes: Int, errorDescription: String?)) -> Void) {
+    static func oop(libreData: [UInt8], libreSensorSerialNumber: LibreSensorSerialNumber, timeStampLastBgReading: Date, oopWebSite: String, oopWebToken: String, _ callback: @escaping ((glucoseData: [GlucoseData], sensorState: LibreSensorState, sensorTimeInMinutes: Int, errorDescription: String?)) -> Void) {
         let sensorState = LibreSensorState(stateByte: libreData[4])
         let body = Array(libreData[24 ..< 320])
         let sensorTime = Int(body[293]) << 8 + Int(body[292])
@@ -109,7 +109,7 @@ public class LibreOOPClient {
         }
         
         // get LibreDerivedAlgorithmParameters
-        calibrateSensor(bytes: [UInt8](libreData), serialNumber: serialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken) {
+        calibrateSensor(bytes: [UInt8](libreData), libreSensorSerialNumber: libreSensorSerialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken) {
             (calibrationparams)  in
             callback((oopParams(libreData: [UInt8](libreData), params: calibrationparams, timeStampLastBgReading: timeStampLastBgReading),
                       sensorState,
@@ -162,11 +162,11 @@ public class LibreOOPClient {
     ///   - patchInfo: sensor sn hex string
     ///   - oopValue: parsed value
     ///   - timeStampLastBgReading: timestamp of last reading, older readings will be ignored
-    ///   - serialNumber: serial number
+    ///   - libreSensorSerialNumber: serial number
     ///   - oopWebSite: the site url to use if oop web would be enabled
     ///   - oopWebToken: the token to use if oop web would be enabled
     ///   - callback: will be called when glucose data is read with as parameter the timestamp of the last reading.
-    static func handleGlucose(libreData: [UInt8], patchInfo: String, oopValue: LibreRawGlucoseWeb?, timeStampLastBgReading: Date, serialNumber: String, oopWebSite: String, oopWebToken: String, _ callback: @escaping ((glucoseData: [GlucoseData], sensorState: LibreSensorState, sensorTimeInMinutes: Int, errorDescription: String?)) -> Void) {
+    static func handleGlucose(libreData: [UInt8], patchInfo: String, oopValue: LibreRawGlucoseWeb?, timeStampLastBgReading: Date, libreSensorSerialNumber: LibreSensorSerialNumber, oopWebSite: String, oopWebToken: String, _ callback: @escaping ((glucoseData: [GlucoseData], sensorState: LibreSensorState, sensorTimeInMinutes: Int, errorDescription: String?)) -> Void) {
         if let oopValue = oopValue, !oopValue.isError {
             if oopValue.valueError {
                 if oopValue.sensorState == .notYetStarted {
@@ -176,8 +176,8 @@ public class LibreOOPClient {
                 }
             } else {
                 if oopValue.canGetParameters {
-                    if UserDefaults.standard.algorithmParameters?.serialNumber != serialNumber {
-                        calibrateSensor(bytes: [UInt8](libreData), serialNumber: serialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback: {_ in })
+                    if UserDefaults.standard.algorithmParameters?.serialNumber != libreSensorSerialNumber.serialNumber {
+                        calibrateSensor(bytes: [UInt8](libreData), libreSensorSerialNumber: libreSensorSerialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback: {_ in })
                     }
                 }
                 
@@ -198,7 +198,7 @@ public class LibreOOPClient {
         } else {
             // only patchInfo `hasPrefix` "70" and "E5" can use the local parse
             if patchInfo.hasPrefix("70") || patchInfo.hasPrefix("E5")  {
-                oop(libreData: libreData, serialNumber: serialNumber, timeStampLastBgReading: timeStampLastBgReading, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback)
+                oop(libreData: libreData, libreSensorSerialNumber: libreSensorSerialNumber, timeStampLastBgReading: timeStampLastBgReading, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback)
             } else {
                 callback(([], .failure, 0, nil))
             }
@@ -212,27 +212,28 @@ public class LibreOOPClient {
     ///   - patchUid: sensor sn hex string
     ///   - patchInfo: will be used by server to out the glucose data
     ///   - timeStampLastBgReading: timestamp of last reading, older readings will be ignored
-    ///   - serialNumber: serial number
+    ///   - libreSensorSerialNumber: serial number
     ///   - oopWebSite: the site url to use if oop web would be enabled
     ///   - oopWebToken: the token to use if oop web would be enabled
     ///   - callback: will be called when glucose data is read with as parameter the timestamp of the last reading.
-    static func handleLibreData(libreData: Data, patchUid: String?, patchInfo: String?, timeStampLastBgReading: Date, serialNumber: String, oopWebSite: String, oopWebToken: String, _ callback: @escaping ((glucoseData: [GlucoseData], sensorState: LibreSensorState, sensorTimeInMinutes: Int, errorDescription: String?)) -> Void) {
+    static func handleLibreData(libreData: Data, patchInfo: String?, timeStampLastBgReading: Date, libreSensorSerialNumber: LibreSensorSerialNumber, oopWebSite: String, oopWebToken: String, _ callback: @escaping ((glucoseData: [GlucoseData], sensorState: LibreSensorState, sensorTimeInMinutes: Int, errorDescription: String?)) -> Void) {
         let bytes = [UInt8](libreData)
-        guard let patchUid = patchUid, let patchInfo = patchInfo else {
-            oop(libreData: bytes, serialNumber: serialNumber, timeStampLastBgReading: timeStampLastBgReading, oopWebSite: oopWebSite, oopWebToken: oopWebToken,  callback)
+        guard let patchInfo = patchInfo else {
+            oop(libreData: bytes, libreSensorSerialNumber: libreSensorSerialNumber, timeStampLastBgReading: timeStampLastBgReading, oopWebSite: oopWebSite, oopWebToken: oopWebToken,  callback)
             return
         }
+        
         // if patchInfo.hasPrefix("A2"), server uses another arithmetic to handle the 344 bytes
         if patchInfo.hasPrefix("A2") {
             handleLibreA2Data(libreData: bytes, oopWebSite: oopWebSite) { (data) in
                 DispatchQueue.main.async {
-                    handleGlucose(libreData: bytes, patchInfo: patchInfo, oopValue: data, timeStampLastBgReading: timeStampLastBgReading, serialNumber: serialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback)
+                    handleGlucose(libreData: bytes, patchInfo: patchInfo, oopValue: data, timeStampLastBgReading: timeStampLastBgReading, libreSensorSerialNumber: libreSensorSerialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback)
                 }
             }
         } else {
             DispatchQueue.main.async {
-                webOOP(libreData: bytes, patchUid: patchUid, patchInfo: patchInfo, oopWebSite: oopWebSite, oopWebToken: oopWebToken) { (data) in
-                    handleGlucose(libreData: bytes, patchInfo: patchInfo, oopValue: data, timeStampLastBgReading: timeStampLastBgReading, serialNumber: serialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback)
+                webOOP(libreData: bytes, libreSensorSerialNumber: libreSensorSerialNumber, patchInfo: patchInfo, oopWebSite: oopWebSite, oopWebToken: oopWebToken) { (data) in
+                    handleGlucose(libreData: bytes, patchInfo: patchInfo, oopValue: data, timeStampLastBgReading: timeStampLastBgReading, libreSensorSerialNumber: libreSensorSerialNumber, oopWebSite: oopWebSite, oopWebToken: oopWebToken, callback)
                 }
             }
         }
@@ -281,14 +282,14 @@ public class LibreOOPClient {
     /// get the `LibreDerivedAlgorithmParameters`
     /// - Parameters:
     ///   - bytes: the 344 bytes from Libre sensor
-    ///   - serialNumber: serial number
+    ///   - libreSensorSerialNumber: serial number
     ///   - oopWebSite: the site url to use if oop web would be enabled
     ///   - oopWebToken: the token to use if oop web would be enabled
     ///   - callback: return `LibreDerivedAlgorithmParameters`
-    public static func calibrateSensor(bytes: [UInt8], serialNumber: String, oopWebSite: String, oopWebToken: String,  callback: @escaping (LibreDerivedAlgorithmParameters) -> Void) {
+    public static func calibrateSensor(bytes: [UInt8], libreSensorSerialNumber: LibreSensorSerialNumber, oopWebSite: String, oopWebToken: String,  callback: @escaping (LibreDerivedAlgorithmParameters) -> Void) {
         // the parameters of one sensor will not be changed, if have cached it, get it from userdefaults
         if let parameters = UserDefaults.standard.algorithmParameters {
-            if parameters.serialNumber == serialNumber {
+            if parameters.serialNumber == libreSensorSerialNumber.serialNumber {
                 callback(parameters)
                 return
             }
@@ -302,7 +303,7 @@ public class LibreOOPClient {
                                                           isValidForFooterWithReverseCRCs: 1,
                                                           extraSlope: 1.0,
                                                           extraOffset: 0.0,
-                                                          sensorSerialNumber: serialNumber)
+                                                          sensorSerialNumber: libreSensorSerialNumber.serialNumber)
         
         post(bytes: bytes, oopWebSite: oopWebSite, oopWebToken: oopWebToken, { (data, str, can) in
             let decoder = JSONDecoder()
@@ -316,8 +317,8 @@ public class LibreOOPClient {
                                                                  isValidForFooterWithReverseCRCs: Int(slope.isValidForFooterWithReverseCRCs ?? 1),
                                                                  extraSlope: 1.0,
                                                                  extraOffset: 0.0,
-                                                                 sensorSerialNumber: serialNumber)
-                    libreDerivedAlgorithmParameters.serialNumber = serialNumber
+                                                                 sensorSerialNumber: libreSensorSerialNumber.serialNumber)
+                    libreDerivedAlgorithmParameters.serialNumber = libreSensorSerialNumber.serialNumber
                     if !libreDerivedAlgorithmParameters.isErrorParameters {
                         UserDefaults.standard.algorithmParameters = libreDerivedAlgorithmParameters
                         callback(libreDerivedAlgorithmParameters)

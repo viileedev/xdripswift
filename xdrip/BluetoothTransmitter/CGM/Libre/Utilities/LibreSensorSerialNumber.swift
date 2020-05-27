@@ -8,7 +8,7 @@
 
 import Foundation
 
-struct LibreSensorSerialNumber: CustomStringConvertible {
+public struct LibreSensorSerialNumber: CustomStringConvertible {
     
     let uid: Data
 
@@ -103,7 +103,7 @@ struct LibreSensorSerialNumber: CustomStringConvertible {
     }
 
     // MARK: - CustomStringConvertible Protocoll
-    var description: String {
+    public var description: String {
         return "Uid is \(prettyUidString) and derived serial number is \(serialNumber)"
     }
 }

@@ -46,8 +46,7 @@ class CGMBubbleTransmitter:BluetoothTransmitter, CGMTransmitter {
     /// current sensor serial number, if nil then it's not known yet
     private var sensorSerialNumber:String?
     
-    private var patchUid: String?
-    
+    /// gives information about type of sensor (Libre1, Libre2, etc..)
     private var patchInfo: String?
     
     /// oop website url to use in case oop web would be enabled
@@ -165,46 +164,51 @@ class CGMBubbleTransmitter:BluetoothTransmitter, CGMTransmitter {
                         
                         guard value.count >= 10 else { return }
                         rxBuffer.append(value.subdata(in: 2..<10))
-                        patchUid = value.subdata(in: 2 ..< 10).hexEncodedString().uppercased()
                         
                     case .dataPacket:
                         
                         rxBuffer.append(value.suffix(from: 4))
                         if rxBuffer.count >= 352 {
                             
-                            guard let patchInfo = patchInfo else {
-                                resetRxBuffer()
+                            guard let libreSensorSerialNumber = LibreSensorSerialNumber(withUID: Data(rxBuffer.subdata(in: 0..<8))) else {
+                                trace("    could not create libreSensorSerialNumber", log: self.log, category: ConstantsLog.categoryCGMBubble, type: .info)
                                 return
                             }
                             
-                            if let libreSensorSerialNumber = LibreSensorSerialNumber(withUID: Data(rxBuffer.subdata(in: 0..<8))) {
+                            // verify serial number and if changed inform delegate
+                            if libreSensorSerialNumber.serialNumber != sensorSerialNumber {
                                 
                                 
-                                // verify serial number and if changed inform delegate
-                                if libreSensorSerialNumber.serialNumber != sensorSerialNumber {
-                                    
-                                    sensorSerialNumber = libreSensorSerialNumber.serialNumber
-                                    
-                                    trace("    new sensor detected :  %{public}@", log: log, category: ConstantsLog.categoryCGMBubble, type: .info, libreSensorSerialNumber.serialNumber)
-                                    
-                                    // inform delegate about new sensor detected
-                                    cgmTransmitterDelegate?.newSensorDetected()
-                                    
-                                    cGMBubbleTransmitterDelegate?.received(serialNumber: libreSensorSerialNumber.serialNumber, from: self)
-                                    
-                                    // also reset timestamp last reading, to be sure that if new sensor is started, we get historic data
-                                    timeStampLastBgReading = Date(timeIntervalSince1970: 0)
-                                    
-                                }
+                                sensorSerialNumber = libreSensorSerialNumber.serialNumber
+                                
+                                trace("    new sensor detected :  %{public}@", log: log, category: ConstantsLog.categoryCGMBubble, type: .info, libreSensorSerialNumber.serialNumber)
+                                
+                                // inform delegate about new sensor detected
+                                cgmTransmitterDelegate?.newSensorDetected()
+                                
+                                cGMBubbleTransmitterDelegate?.received(serialNumber: libreSensorSerialNumber.serialNumber, from: self)
+                                
+                                // also reset timestamp last reading, to be sure that if new sensor is started, we get historic data
+                                timeStampLastBgReading = Date(timeIntervalSince1970: 0)
                                 
                             }
+
+                            // function used two times in next statements
+                            let checkCrc = { guard Crc.LibreCrc(data: &self.rxBuffer, headerOffset: self.bubbleHeaderLength) else {
+                                trace("    Libre 1 sensor, CRC check failed", log: self.log, category: ConstantsLog.categoryCGMBubble, type: .info)
+                                return
+                                } }
                             
-                            // libre1 patchinfo first byte is "70" or "E5"
-                            if patchInfo.contains(find: "70")  || patchInfo.contains(find: "E5") {
-                                guard Crc.LibreCrc(data: &rxBuffer, headerOffset: bubbleHeaderLength) else { return }
+                            // if patchInfo != nil, then this is a Bubble that sends patchInfo.
+                            // libre1 patchinfo first byte is "70" or "E5" - other case no CRC check required
+                            if let patchInfo = patchInfo, patchInfo.contains(find: "70")  || patchInfo.contains(find: "E5") {
+                                checkCrc()
+                            } else if patchInfo == nil {
+                                // must be a Bubble that doesn't support patchInfo, so it must be a Libre1, CRC check required
+                                checkCrc()
                             }
                             
-                            LibreDataParser.libreDataProcessor(sensorSerialNumber: sensorSerialNumber, patchUid: patchUid, patchInfo: patchInfo, webOOPEnabled: webOOPEnabled, oopWebSite: oopWebSite, oopWebToken: oopWebToken, libreData: (rxBuffer.subdata(in: bubbleHeaderLength..<(344 + bubbleHeaderLength))), cgmTransmitterDelegate: cgmTransmitterDelegate, transmitterBatteryInfo: nil, firmware: nil, hardware: nil, hardwareSerialNumber: nil, bootloader: nil, timeStampLastBgReading: timeStampLastBgReading, completionHandler: {(timeStampLastBgReading:Date) in
+                            LibreDataParser.libreDataProcessor(libreSensorSerialNumber: libreSensorSerialNumber, patchInfo: patchInfo, webOOPEnabled: webOOPEnabled, oopWebSite: oopWebSite, oopWebToken: oopWebToken, libreData: (rxBuffer.subdata(in: bubbleHeaderLength..<(344 + bubbleHeaderLength))), cgmTransmitterDelegate: cgmTransmitterDelegate, transmitterBatteryInfo: nil, firmware: nil, hardware: nil, hardwareSerialNumber: nil, bootloader: nil, timeStampLastBgReading: timeStampLastBgReading, completionHandler: {(timeStampLastBgReading:Date) in
                                 self.timeStampLastBgReading = timeStampLastBgReading
                                 
                             })
